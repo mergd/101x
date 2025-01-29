@@ -1,3 +1,7 @@
+# 10x text editor
+
+A super-simple text editor that gives you 10 autocomplete suggestions at a time.
+
 ## Environment Setup
 
 1. Copy the `.env.sample` file to create your `.env.local`:
