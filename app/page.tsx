@@ -7,6 +7,9 @@ export default function Chat() {
   const [completions, setCompletions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeCompletion, setActiveCompletion] = useState<number | null>(null);
+  const [model, setModel] = useState<
+    "gpt-4o-mini" | "claude-3-5-sonnet-20241022"
+  >("claude-3-5-sonnet-20241022");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [context, setContext] = useState(() => {
     // Initialize context from localStorage if available
@@ -54,6 +57,7 @@ export default function Chat() {
       body: JSON.stringify({
         messages: [{ content: text }],
         context: context,
+        model: model,
       }),
     });
 
@@ -105,12 +109,16 @@ export default function Chat() {
   const handleKeyPress = async (e: React.KeyboardEvent) => {
     const key = e.key;
 
+    // Only handle completion-related keys when completions are showing
+    if (completions.length === 0) {
+      return;
+    }
+
     if (/^[0-9]$/.test(key)) {
       e.preventDefault();
       await applyCompletion(parseInt(key));
     } else if (key === "ArrowUp" || key === "ArrowDown") {
       e.preventDefault();
-      if (completions.length === 0) return;
 
       if (activeCompletion === null) {
         setActiveCompletion(key === "ArrowUp" ? completions.length - 1 : 0);
@@ -138,14 +146,28 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-screen relative">
-      <input
-        type="text"
-        className="w-full p-4 dark:bg-zinc-800 border-b border-zinc-700 focus:outline-none"
-        value={context}
-        onChange={(e) => setContext(e.target.value)}
-        onKeyDown={handleKeyPress}
-        placeholder="What are you writing? (e.g. sci-fi short story, business email, poem)"
-      />
+      <div className="flex items-center dark:bg-zinc-800 border-b border-zinc-700">
+        <input
+          type="text"
+          className="flex-grow p-4 dark:bg-zinc-800 focus:outline-none"
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+          onKeyDown={handleKeyPress}
+          placeholder="What are you writing? (e.g. sci-fi short story, business email, poem)"
+        />
+        <select
+          value={model}
+          onChange={(e) =>
+            setModel(
+              e.target.value as "gpt-4o-mini" | "claude-3-5-sonnet-20241022"
+            )
+          }
+          className="ml-4 mr-4 p-2 rounded dark:bg-zinc-700 focus:outline-none"
+        >
+          <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+          <option value="gpt-4o-mini">GPT-4o Mini</option>
+        </select>
+      </div>
       <div className="relative flex-grow">
         <textarea
           ref={textareaRef}
@@ -164,11 +186,11 @@ export default function Chat() {
             {isLoading ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-zinc-500"></div>
             ) : (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 {completions.map((completion, i) => (
                   <div
                     key={i}
-                    className={`flex-shrink-0 rounded p-2 cursor-pointer ${
+                    className={`rounded p-2 cursor-pointer ${
                       i === activeCompletion
                         ? "bg-blue-500 text-white"
                         : "hover:bg-blue-500 hover:text-white bg-zinc-100 dark:bg-zinc-800"
