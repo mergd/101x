@@ -20,6 +20,7 @@ export default function Chat() {
   });
   const [text, setText] = useState("");
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const { input, handleInputChange } = useChat({
     maxSteps: 5,
     initialInput:
@@ -49,21 +50,40 @@ export default function Chat() {
   const fetchCompletions = async (text: string) => {
     setIsLoading(true);
 
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages: [{ content: text }],
-        context: context,
-        model: model,
-      }),
-    });
+    // Cancel any ongoing fetch
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
 
-    const suggestions = await response.json();
-    setCompletions(suggestions);
-    setIsLoading(false);
+    // Create new abort controller for this fetch
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [{ content: text }],
+          context: context,
+          model: model,
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      const suggestions = await response.json();
+      setCompletions(suggestions);
+    } catch (err) {
+      if (err.name === "AbortError") {
+        // Ignore abort errors
+        return;
+      }
+      // Handle other errors
+      console.error("Error fetching completions:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -81,6 +101,9 @@ export default function Chat() {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, [input]);
@@ -108,6 +131,13 @@ export default function Chat() {
 
   const handleKeyPress = async (e: React.KeyboardEvent) => {
     const key = e.key;
+
+    // Handle escape key to hide completions
+    if (key === "Escape") {
+      setCompletions([]);
+      setActiveCompletion(null);
+      return;
+    }
 
     // Only handle completion-related keys when completions are showing
     if (completions.length === 0) {
