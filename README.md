@@ -1,13 +1,21 @@
 ## Getting Started
 
-• Install dependencies:
-  pnpm i
+1. Install dependencies:
+```bash
+pnpm i
+```
 
-• Run the Next.js development server (at http://localhost:3000):
-  pnpm run dev
+2. Run the Next.js development server (at http://localhost:3000):
+```bash
+pnpm run dev
+```
 
-• Run the Electron development environment:
-  pnpm run electron-dev
+3. Run the Electron development environment:
+```bash
+pnpm run electron-dev
+```
 
-• Build the Electron app:
-  npm run electron-build
+4. Build the Electron app:
+```bash
+pnpm run electron-build
+```

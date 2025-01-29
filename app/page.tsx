@@ -7,7 +7,6 @@ export default function Chat() {
   const [completions, setCompletions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeCompletion, setActiveCompletion] = useState<number | null>(null);
-  const [cursorPosition, setCursorPosition] = useState({ top: 0, left: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [context, setContext] = useState(() => {
     // Initialize context from localStorage if available
@@ -82,51 +81,6 @@ export default function Chat() {
     };
   }, [input]);
 
-  const updateCursorPosition = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const { selectionStart } = textarea;
-
-    // Create a temporary div to measure text dimensions
-    const div = document.createElement("div");
-    div.style.cssText = window.getComputedStyle(textarea, null).cssText;
-    div.style.height = "auto";
-    div.style.position = "absolute";
-    div.style.visibility = "hidden";
-    div.style.whiteSpace = "pre-wrap";
-
-    // Get text up to cursor
-    const textBeforeCursor = textarea.value.substring(0, selectionStart);
-    div.textContent = textBeforeCursor;
-
-    document.body.appendChild(div);
-
-    // Calculate cursor position
-    const textareaRect = textarea.getBoundingClientRect();
-    const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight);
-    const lines = textBeforeCursor.split("\n");
-    const currentLine = lines[lines.length - 1];
-
-    // Create another temporary div for the current line
-    const lineDiv = document.createElement("div");
-    lineDiv.style.cssText = div.style.cssText;
-    lineDiv.textContent = currentLine;
-    document.body.appendChild(lineDiv);
-
-    const top = (lines.length - 1) * lineHeight; // Subtract 1 to start from 0
-    const left = lineDiv.clientWidth;
-
-    // Cleanup
-    document.body.removeChild(div);
-    document.body.removeChild(lineDiv);
-
-    setCursorPosition({
-      top: top + textareaRect.top + textarea.scrollTop,
-      left: left + textareaRect.left - textarea.scrollLeft,
-    });
-  };
-
   const applyCompletion = async (index: number) => {
     if (completions[index]) {
       const completion = completions[index];
@@ -150,7 +104,6 @@ export default function Chat() {
 
   const handleKeyPress = async (e: React.KeyboardEvent) => {
     const key = e.key;
-    updateCursorPosition();
 
     if (/^[0-9]$/.test(key)) {
       e.preventDefault();
@@ -194,18 +147,24 @@ export default function Chat() {
         placeholder="What are you writing? (e.g. sci-fi short story, business email, poem)"
       />
       <div className="relative flex-grow">
+        <textarea
+          ref={textareaRef}
+          className="w-full h-full p-4 dark:bg-zinc-900 resize-none focus:outline-none"
+          value={input}
+          placeholder="Start typing... (press 0-9 to select a completion, or use arrow keys to navigate)"
+          onChange={(e) => {
+            handleInputChange(e);
+          }}
+          onKeyDown={handleKeyPress}
+          autoFocus
+        />
+
         {(completions.length > 0 || isLoading) && (
-          <div
-            className="absolute z-10 bg-zinc-50 dark:bg-zinc-900 p-4 rounded-lg shadow-lg"
-            style={{
-              top: `${cursorPosition.top}px`,
-              left: `${cursorPosition.left}px`,
-            }}
-          >
+          <div className="absolute bottom-0 left-0 right-0 bg-zinc-50 dark:bg-zinc-900 p-4 border-t border-zinc-700">
             {isLoading ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-zinc-500"></div>
             ) : (
-              <div className="inline-flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 {completions.map((completion, i) => (
                   <div
                     key={i}
@@ -225,21 +184,6 @@ export default function Chat() {
             )}
           </div>
         )}
-
-        <textarea
-          ref={textareaRef}
-          className="w-full h-full p-4 dark:bg-zinc-900 resize-none focus:outline-none"
-          value={input}
-          placeholder="Start typing... (press 0-9 to select a completion, or use arrow keys to navigate)"
-          onChange={(e) => {
-            handleInputChange(e);
-            updateCursorPosition();
-          }}
-          onKeyDown={handleKeyPress}
-          onSelect={updateCursorPosition}
-          onClick={updateCursorPosition}
-          autoFocus
-        />
       </div>
     </div>
   );
