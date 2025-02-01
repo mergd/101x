@@ -1,242 +1,126 @@
 "use client";
 
-import { useChat } from "ai/react";
-import { useState, useEffect, useRef } from "react";
+import { type OnMount } from "@monaco-editor/react";
+import { useEffect, useRef, useState } from "react";
+import { Libre_Baskerville } from "next/font/google";
+import { EditorMenubar } from "@/components/editor-menubar";
+import { SettingsDialog } from "@/components/settings-dialog";
+import { CommandPalette } from "@/components/command-palette";
+import { ResizableWrapper } from "@/components/resizable-wrapper";
+import { WELCOME_TEXT } from "@/lib/constants";
+import { markdownTheme } from "@/lib/editor-theme";
+import { useMonacoCompletions } from "@/hooks/useMonacoCompletions";
 
-export default function Chat() {
-  const [completions, setCompletions] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [activeCompletion, setActiveCompletion] = useState<number | null>(null);
-  const [model, setModel] = useState<
-    "gpt-4o-mini" | "claude-3-5-sonnet-20241022"
-  >("claude-3-5-sonnet-20241022");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [context, setContext] = useState(() => {
-    // Initialize context from localStorage if available
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("writing-context") || "";
-    }
-    return "";
-  });
-  const [text, setText] = useState("");
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const { input, handleInputChange } = useChat({
-    maxSteps: 5,
-    initialInput:
-      typeof window !== "undefined"
-        ? localStorage.getItem("writing-input") || ""
-        : "",
-  });
+const libreBaskerville = Libre_Baskerville({
+  weight: ["400", "700"],
+  subsets: ["latin"],
+  variable: "--font-libre",
+});
 
-  // Save context to localStorage when it changes
-  useEffect(() => {
-    if (context) {
-      localStorage.setItem("writing-context", context);
-    } else {
-      localStorage.removeItem("writing-context");
-    }
-  }, [context]);
+export default function MarkdownEditor() {
+  const [content, setContent] = useState<string>(WELCOME_TEXT);
+  const [isPreview, setIsPreview] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(true);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const setMonaco = useMonacoCompletions(editorRef.current);
 
-  // Save input to localStorage when it changes
-  useEffect(() => {
-    if (input) {
-      localStorage.setItem("writing-input", input);
-    } else {
-      localStorage.removeItem("writing-input");
-    }
-  }, [input]);
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
 
-  const fetchCompletions = async (text: string) => {
-    setIsLoading(true);
+    // Configure Monaco for markdown editing
+    monaco.editor.defineTheme("markdownTheme", markdownTheme);
+    monaco.editor.setTheme("markdownTheme");
 
-    // Cancel any ongoing fetch
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    // Set up completions
+    setMonaco(monaco);
 
-    // Create new abort controller for this fetch
-    abortControllerRef.current = new AbortController();
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: [{ content: text }],
-          context: context,
-          model: model,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      const suggestions = await response.json();
-      setCompletions(suggestions);
-    } catch (err) {
-      if (err.name === "AbortError") {
-        // Ignore abort errors
-        return;
-      }
-      // Handle other errors
-      console.error("Error fetching completions:", err);
-    } finally {
-      setIsLoading(false);
-    }
+    // Disable the default Cmd+Shift+L binding
+    monaco.editor.addKeybindingRule({
+      keybinding:
+        monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyL,
+      command: null,
+    });
   };
 
   useEffect(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    if (input.trim()) {
-      timeoutRef.current = setTimeout(() => {
-        setText(input);
-        fetchCompletions(input);
-      }, 1000);
-    }
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle preview with Cmd+Shift+P
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "p"
+      ) {
+        e.preventDefault();
+        setIsPreview(!isPreview);
       }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      // Toggle chat with Cmd+Shift+L
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "l"
+      ) {
+        e.preventDefault();
+        setIsChatOpen(!isChatOpen);
+      }
+      // Handle Escape key
+      if (e.key === "Escape" && editorRef.current) {
+        e.preventDefault();
+        editorRef.current.focus();
+      }
+      // Toggle command palette with Cmd+K
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandOpen(true);
+      }
+      // Toggle settings with Cmd+,
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setIsSettingsOpen(true);
       }
     };
-  }, [input]);
 
-  const applyCompletion = async (index: number) => {
-    if (completions[index]) {
-      const completion = completions[index];
-      const needsSpace =
-        text.length > 0 && !text.endsWith(" ") && !completion.startsWith(" ");
-      const updatedText = text + (needsSpace ? " " : "") + completion;
-
-      // Clear completions before updating text to hide dropdown
-      setCompletions([]);
-
-      setText(updatedText);
-      handleInputChange({
-        target: { value: updatedText },
-      } as React.ChangeEvent<HTMLInputElement>);
-
-      // Generate new completions based on updated text
-      await fetchCompletions(updatedText);
-      setActiveCompletion(null);
-    }
-  };
-
-  const handleKeyPress = async (e: React.KeyboardEvent) => {
-    const key = e.key;
-
-    // Handle escape key to hide completions
-    if (key === "Escape") {
-      setCompletions([]);
-      setActiveCompletion(null);
-      return;
-    }
-
-    // Only handle completion-related keys when completions are showing
-    if (completions.length === 0) {
-      return;
-    }
-
-    if (/^[0-9]$/.test(key)) {
-      e.preventDefault();
-      await applyCompletion(parseInt(key));
-    } else if (key === "ArrowUp" || key === "ArrowDown") {
-      e.preventDefault();
-
-      if (activeCompletion === null) {
-        setActiveCompletion(key === "ArrowUp" ? completions.length - 1 : 0);
-      } else {
-        setActiveCompletion((prev) => {
-          if (prev === null) return 0;
-          if (key === "ArrowUp") {
-            return prev === 0 ? completions.length - 1 : prev - 1;
-          } else {
-            return prev === completions.length - 1 ? 0 : prev + 1;
-          }
-        });
-      }
-    } else if (key === "ArrowLeft") {
-      e.preventDefault();
-      setActiveCompletion(null);
-    } else if (
-      (key === "ArrowRight" || key === "Enter") &&
-      activeCompletion !== null
-    ) {
-      e.preventDefault();
-      await applyCompletion(activeCompletion);
-    }
-  };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    isPreview,
+    isChatOpen,
+    setIsPreview,
+    setIsChatOpen,
+    setIsCommandOpen,
+    setIsSettingsOpen,
+  ]);
 
   return (
-    <div className="flex flex-col h-screen relative">
-      <div className="flex items-center dark:bg-zinc-800 border-b border-zinc-700">
-        <input
-          type="text"
-          className="flex-grow p-4 dark:bg-zinc-800 focus:outline-none"
-          value={context}
-          onChange={(e) => setContext(e.target.value)}
-          onKeyDown={handleKeyPress}
-          placeholder="What are you writing? (e.g. sci-fi short story, business email, poem)"
-        />
-        <select
-          value={model}
-          onChange={(e) =>
-            setModel(
-              e.target.value as "gpt-4o-mini" | "claude-3-5-sonnet-20241022"
-            )
-          }
-          className="ml-4 mr-4 p-2 rounded dark:bg-zinc-700 focus:outline-none"
-        >
-          <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-          <option value="gpt-4o-mini">GPT-4o Mini</option>
-        </select>
-      </div>
-      <div className="relative flex-grow">
-        <textarea
-          ref={textareaRef}
-          className="w-full h-full p-4 dark:bg-zinc-900 resize-none focus:outline-none"
-          value={input}
-          placeholder="Start typing... (press 0-9 to select a completion, or use arrow keys to navigate)"
-          onChange={(e) => {
-            handleInputChange(e);
-          }}
-          onKeyDown={handleKeyPress}
-          autoFocus
-        />
+    <div className={`h-screen bg-white relative ${libreBaskerville.variable}`}>
+      <EditorMenubar
+        onCommandClick={() => setIsCommandOpen(true)}
+        onSettingsClick={() => setIsSettingsOpen(true)}
+        onTogglePreview={() => setIsPreview(!isPreview)}
+        onToggleChat={() => setIsChatOpen(!isChatOpen)}
+      />
 
-        {(completions.length > 0 || isLoading) && (
-          <div className="absolute bottom-0 left-0 right-0 bg-zinc-50 dark:bg-zinc-900 p-4 border-t border-zinc-700">
-            {isLoading ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-zinc-500"></div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {completions.map((completion, i) => (
-                  <div
-                    key={i}
-                    className={`rounded p-2 cursor-pointer ${
-                      i === activeCompletion
-                        ? "bg-blue-500 text-white"
-                        : "hover:bg-blue-500 hover:text-white bg-zinc-100 dark:bg-zinc-800"
-                    }`}
-                    onClick={() => applyCompletion(i)}
-                    onMouseEnter={() => setActiveCompletion(i)}
-                    onMouseLeave={() => setActiveCompletion(null)}
-                  >
-                    <span className="font-bold">{i}:</span> {completion}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+      <div className="h-[calc(100vh-2.5rem)]">
+        <ResizableWrapper
+          content={content}
+          isPreview={isPreview}
+          isChatOpen={isChatOpen}
+          onContentChange={setContent}
+          onChatClose={() => setIsChatOpen(false)}
+          onEditorMount={handleEditorDidMount}
+        />
       </div>
+
+      <CommandPalette
+        open={isCommandOpen}
+        onOpenChange={setIsCommandOpen}
+        onTogglePreview={() => setIsPreview(!isPreview)}
+        onToggleChat={() => setIsChatOpen(!isChatOpen)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
+      <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
     </div>
   );
 }

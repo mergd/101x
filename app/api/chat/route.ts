@@ -1,47 +1,61 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
 import { streamObject } from "ai";
 import { z } from "zod";
 
 export const maxDuration = 30;
 
+// Debounce time in milliseconds for the client side
+const MAX_COMPLETIONS = 5;
+
+interface Message {
+  content: string;
+  role: "user" | "assistant";
+}
+
 export async function POST(req: Request) {
-  const { messages, context, model } = await req.json();
-  const lastMessage = messages[messages.length - 1].content;
+  const {
+    messages,
+    prefix,
+    model = "claude-3-5-haiku-latest",
+  } = await req.json();
 
-  const contextPrompt = context ? `You are helping write ${context}. ` : "";
+  if (!prefix || prefix.trim().length < 3) {
+    return new Response(JSON.stringify([]), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const prompt = `${contextPrompt}You are an intelligent writing assistant helping to write ${
-    context || "text"
-  }.
-  Based on what has been written so far, generate 10 different natural continuations or suggestions that could help inform the next part of the writing.
-  The suggestions should vary significantly in length - some should be very short fragments (2-3 words), while others should be longer, multi-sentence continuations.
-  Mix creative and unexpected suggestions with more straightforward ones.
-  They can be phrases, fragments, or full sentences that could help inspire the next part of the writing.
-  Current text: "${lastMessage}"`;
+  const prompt = `You are an intelligent document completion assistant. Based on the following code prefix, generate ${MAX_COMPLETIONS} natural, high-quality completions that could help continue the document. The completions should be concise and helpful.
+  
+  Code prefix: "${prefix}"
+  
+  Previous messages for context (if any):
+  ${
+    messages?.map((m: Message) => m.content).join("\n") || "No previous context"
+  }`;
 
   const { elementStream } = streamObject({
-    model:
-      model === "claude-3-5-sonnet-20241022"
-        ? anthropic("claude-3-5-sonnet-20241022")
-        : openai("gpt-4o-mini"),
-    temperature: 0.9,
+    model: anthropic(model),
+    temperature: 0.2, // Lower temperature for more focused completions
     output: "array",
     schema: z.object({
-      completion: z
-        .string()
-        .describe("A natural continuation or suggestion for the text"),
+      completion: z.string().describe("A natural code completion suggestion"),
     }),
     prompt,
   });
 
   const completions = [];
-  for await (const element of elementStream) {
-    // Accept suggestions of any length to allow for variety
-    completions.push(element.completion);
-    if (completions.length === 10) break;
+  try {
+    for await (const element of elementStream) {
+      completions.push(element.completion);
+      if (completions.length === MAX_COMPLETIONS) break;
+    }
+  } catch (error) {
+    console.error("Error generating completions:", error);
+    return new Response(JSON.stringify([]), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
   console.log(completions);
 
   return new Response(JSON.stringify(completions), {
