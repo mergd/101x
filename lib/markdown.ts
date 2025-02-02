@@ -14,21 +14,4 @@ marked.use(
   })
 );
 
-// Configure marked to hide backticks
-marked.use({
-  renderer: {
-    code(code: string, infostring: string | undefined) {
-      const validLanguage = hljs.getLanguage(infostring || "")
-        ? infostring
-        : "";
-      const highlighted = validLanguage
-        ? hljs.highlight(code, { language: validLanguage }).value
-        : code;
-      return `<pre><code class="hljs language-${
-        validLanguage || "plaintext"
-      }">${highlighted}</code></pre>`;
-    },
-  },
-});
-
 export { marked };
