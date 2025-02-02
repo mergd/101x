@@ -21,6 +21,7 @@
     "@mdxeditor/editor": "^3.21.2",
     "@monaco-editor/react": "^4.6.0",
     "@radix-ui/react-dialog": "^1.1.5",
+    "@radix-ui/react-scroll-area": "^1.2.2",
     "@radix-ui/react-separator": "^1.1.1",
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.7",
@@ -56,6 +57,7 @@
     "eslint-config-next": "15.1.6",
     "monaco-editor": "^0.52.2",
     "postcss": "^8",
+    "shadcn-ui": "^0.9.4",
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
     "wait-on": "^7.2.0"

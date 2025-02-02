@@ -5,12 +5,13 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { Editor } from "@monaco-editor/react";
-import { MessageSquare } from "lucide-react";
-import { Button } from "./ui/button";
-import { marked } from "@/lib/markdown";
 import { editorOptions } from "@/lib/editor-theme";
+import { marked } from "@/lib/markdown";
 import type { OnMount } from "@monaco-editor/react";
+import { Editor } from "@monaco-editor/react";
+import { Chat } from "./ui/chat";
+import { useCallback, useState } from "react";
+import * as monaco from "monaco-editor";
 
 interface ResizableWrapperProps {
   content: string;
@@ -26,9 +27,43 @@ export function ResizableWrapper({
   isPreview,
   isChatOpen,
   onContentChange,
-  onChatClose,
   onEditorMount,
 }: ResizableWrapperProps) {
+  const [selectedText, setSelectedText] = useState("");
+  const [editorInstance, setEditorInstance] =
+    useState<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const [currentSelection, setCurrentSelection] =
+    useState<monaco.Selection | null>(null);
+
+  const handleEditorMount: OnMount = (editor, monacoInstance) => {
+    setEditorInstance(editor);
+    editor.onDidChangeCursorSelection((e) => {
+      const model = editor.getModel();
+      if (!model) return;
+
+      const selection = e.selection;
+      const text = model.getValueInRange(selection);
+      setSelectedText(text);
+      setCurrentSelection(selection);
+    });
+    onEditorMount(editor, monacoInstance);
+  };
+
+  const handleInlineEdit = useCallback(
+    (replacement: string) => {
+      if (!editorInstance || !currentSelection) return;
+
+      const edit = {
+        range: currentSelection,
+        text: replacement,
+        forceMoveMarkers: true,
+      };
+
+      editorInstance.executeEdits("chat", [edit]);
+    },
+    [editorInstance, currentSelection]
+  );
+
   return (
     <ResizablePanelGroup direction="horizontal">
       <ResizablePanel defaultSize={75} minSize={50}>
@@ -41,7 +76,7 @@ export function ResizableWrapper({
                   defaultLanguage="markdown"
                   value={content}
                   options={editorOptions}
-                  onMount={onEditorMount}
+                  onMount={handleEditorMount}
                   onChange={(value) => onContentChange(value || "")}
                 />
               </div>
@@ -66,7 +101,7 @@ export function ResizableWrapper({
               defaultLanguage="markdown"
               value={content}
               options={editorOptions}
-              onMount={onEditorMount}
+              onMount={handleEditorMount}
               onChange={(value) => onContentChange(value || "")}
             />
           </div>
@@ -76,27 +111,7 @@ export function ResizableWrapper({
         <>
           <ResizableHandle className="resizable-handle" />
           <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-            <div className="h-full bg-white border-l border-zinc-200 p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-medium text-zinc-900">Chat</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onChatClose}
-                  className="h-7 px-2"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="text-sm text-zinc-400 italic">
-                Try asking something like:
-                <ul className="mt-2 space-y-1 list-disc list-inside">
-                  <li>How do I create a table?</li>
-                  <li>Format this as a blockquote</li>
-                  <li>Add a code block</li>
-                </ul>
-              </div>
-            </div>
+            <Chat selectedText={selectedText} onInlineEdit={handleInlineEdit} />
           </ResizablePanel>
         </>
       )}

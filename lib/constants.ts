@@ -35,3 +35,6 @@ export const COMMANDS = [
     action: "openSettings",
   },
 ];
+
+export const SONNET = "claude-3-5-sonnet-20241022";
+export const HAIKU = "claude-3-haiku-20241022";
