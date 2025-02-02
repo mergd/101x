@@ -111,7 +111,11 @@ export function ResizableWrapper({
         <>
           <ResizableHandle className="resizable-handle" />
           <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-            <Chat selectedText={selectedText} onInlineEdit={handleInlineEdit} />
+            <Chat
+              selectedText={selectedText}
+              contextText={content}
+              onInlineEdit={handleInlineEdit}
+            />
           </ResizablePanel>
         </>
       )}

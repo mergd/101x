@@ -1,3 +1,4 @@
+import { HAIKU } from "@/lib/constants";
 import { anthropic } from "@ai-sdk/anthropic";
 import { streamObject } from "ai";
 import { z } from "zod";
@@ -6,7 +7,7 @@ export const maxDuration = 30;
 const MAX_COMPLETIONS = 5;
 
 export async function POST(req: Request) {
-  const { text, model = "claude-3-haiku-20240307" } = await req.json();
+  const { text, model = HAIKU } = await req.json();
 
   if (!text) {
     return new Response(JSON.stringify({ completions: [] }), {

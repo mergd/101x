@@ -17,6 +17,10 @@ interface Message {
   content: string;
   suggestedEdit?: {
     text: string;
+    diff?: {
+      added: string[];
+      removed: string[];
+    };
   };
 }
 
@@ -24,6 +28,25 @@ interface ChatProps {
   selectedText?: string;
   contextText?: string;
   onInlineEdit?: (replacement: string) => void;
+}
+
+function parseDiff(
+  content: string
+): { added: string[]; removed: string[] } | undefined {
+  const diffMatch = content.match(/```diff\n([\s\S]*?)```/);
+  if (!diffMatch) return undefined;
+
+  const diffContent = diffMatch[1];
+  const lines = diffContent.split("\n");
+
+  const added = lines
+    .filter((line) => line.startsWith("+"))
+    .map((line) => line.slice(1));
+  const removed = lines
+    .filter((line) => line.startsWith("-"))
+    .map((line) => line.slice(1));
+
+  return { added, removed };
 }
 
 export function Chat({ selectedText, contextText, onInlineEdit }: ChatProps) {
@@ -171,18 +194,24 @@ export function Chat({ selectedText, contextText, onInlineEdit }: ChatProps) {
     );
   };
 
-  async function handleSubmit(
+  const handleSubmit = async (
     e: React.FormEvent | null,
     overrideInput?: string
-  ) {
+  ) => {
     e?.preventDefault();
     const submittedInput = overrideInput || input;
     if (!submittedInput.trim() || isLoading) return;
 
+    // If there's selected text and no specific prompt, ask for improvements
+    const effectiveInput =
+      selectedText && !submittedInput.includes(selectedText)
+        ? `Please suggest improvements to this text: ${submittedInput}`
+        : submittedInput;
+
     const userMessage: Message = {
       id: Math.random().toString(36).substring(7),
       role: "user",
-      content: submittedInput,
+      content: effectiveInput,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -209,12 +238,23 @@ export function Chat({ selectedText, contextText, onInlineEdit }: ChatProps) {
       for await (const chunk of stream) {
         if (!abortControllerRef.current) break;
         content += chunk;
+
+        // Try to parse diff from the content
+        const diff = parseDiff(content);
+        if (diff && selectedText) {
+          assistantMessage.suggestedEdit = {
+            text: diff.added.join("\n"),
+            diff,
+          };
+        }
+
         setMessages((prev) =>
           prev.map((msg) =>
-            msg.id === assistantMessage.id ? { ...msg, content } : msg
+            msg.id === assistantMessage.id
+              ? { ...msg, ...assistantMessage }
+              : msg
           )
         );
-        // Debounced markdown rendering for streaming content
         debouncedRenderMarkdown(content, assistantMessage.id);
       }
     } catch (error: unknown) {
@@ -226,7 +266,7 @@ export function Chat({ selectedText, contextText, onInlineEdit }: ChatProps) {
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -357,9 +397,30 @@ export function Chat({ selectedText, contextText, onInlineEdit }: ChatProps) {
                           </Button>
                         </div>
                       </div>
-                      <div className="text-sm font-mono bg-background rounded p-1">
-                        {message.suggestedEdit.text}
-                      </div>
+                      {message.suggestedEdit.diff ? (
+                        <div className="space-y-1 font-mono text-[13px]">
+                          {message.suggestedEdit.diff.removed.map((line, i) => (
+                            <div
+                              key={i}
+                              className="bg-red-500/10 text-red-700 dark:text-red-400 px-1 rounded"
+                            >
+                              - {line}
+                            </div>
+                          ))}
+                          {message.suggestedEdit.diff.added.map((line, i) => (
+                            <div
+                              key={i}
+                              className="bg-green-500/10 text-green-700 dark:text-green-400 px-1 rounded"
+                            >
+                              + {line}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm font-mono bg-background rounded p-1">
+                          {message.suggestedEdit.text}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
